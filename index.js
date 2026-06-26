@@ -388,7 +388,6 @@ async function run() {
       if (sort === "price_desc") sortStage = { priceNum: -1 };
 
       try {
-        // ১. ডাটা তুলে আনার পাইপলাইন (আগের মতোই আছে)
         let pipeline = [
           { $match: searchMatch },
           {
@@ -418,7 +417,6 @@ async function run() {
           .limit(Number(limit))
           .toArray();
 
-        // 💡 ২. কাউন্ট করার জন্য একদম আলাদা এবং ফ্রেশ পাইপলাইন (এখানেই চেঞ্জ করা হয়েছে)
         let countPipeline = [
           { $match: searchMatch },
           {
@@ -463,75 +461,71 @@ async function run() {
     // });
 
     // home page adbatice
-    app.get(
-      "/api/allticketss/adbatice/ticket",
-
-      async (req, res) => {
-        try {
-          let result = await ticketscollaction
-            .aggregate([
-              // ১. প্রথমে অনুমোদিত এবং অ্যাডভার্টাইজড (adbatice: true) টিকিটগুলো ফিল্টার করুন
-              {
-                $match: {
-                  status: "approved",
-                  adbatice: true,
-                },
+    app.get("/api/allticketss/adbatice/ticket", async (req, res) => {
+      try {
+        let result = await ticketscollaction
+          .aggregate([
+            // ১. প্রথমে অনুমোদিত এবং অ্যাডভার্টাইজড (adbatice: true) টিকিটগুলো ফিল্টার করুন
+            {
+              $match: {
+                status: "approved",
+                adbatice: true,
               },
+            },
 
-              // ২. টিকিট কালেকশনের 'vendorEmail' এর সাথে ইউজার কালেকশনের 'email' জয়েন করুন
-              {
-                $lookup: {
-                  from: "user", // ইউজার কালেকশনের নাম
-                  localField: "vendorEmail", // টিকিট অবজেক্টের ফিল্ড
-                  foreignField: "email", // ইউজার অবজেক্টের ফিল্ড
-                  as: "vendorData",
-                },
+            // ২. টিকিট কালেকশনের 'vendorEmail' এর সাথে ইউজার কালেকশনের 'email' জয়েন করুন
+            {
+              $lookup: {
+                from: "user", // ইউজার কালেকশনের নাম
+                localField: "vendorEmail", // টিকিট অবজেক্টের ফিল্ড
+                foreignField: "email", // ইউজার অবজেক্টের ফিল্ড
+                as: "vendorData",
               },
+            },
 
-              // ৩. লুপআপ করা ডাটা অবজেক্ট আকারে পড়ার সুবিধার্থে আনউইন্ড করুন
-              {
-                $unwind: {
-                  path: "$vendorData",
-                  preserveNullAndEmptyArrays: true, // ভেন্ডর ডিলিট হয়ে গেলেও যেন কোড ক্র্যাশ না করে
-                },
+            // ৩. লুপআপ করা ডাটা অবজেক্ট আকারে পড়ার সুবিধার্থে আনউইন্ড করুন
+            {
+              $unwind: {
+                path: "$vendorData",
+                preserveNullAndEmptyArrays: true, // ভেন্ডর ডিলিট হয়ে গেলেও যেন কোড ক্র্যাশ না করে
               },
+            },
 
-              // ৪. আসল ফিল্টার: ভেন্ডরের 'fraute' প্রোপার্টি যেন true না হয়
-              {
-                $match: {
-                  "vendorData.fraute": { $ne: true },
-                },
+            // ৪. আসল ফিল্টার: ভেন্ডরের 'fraute' প্রোপার্টি যেন true না হয়
+            {
+              $match: {
+                "vendorData.fraute": { $ne: true },
               },
+            },
 
-              // ৫. নতুন বিজ্ঞাপনের টিকিট আগে দেখানোর জন্য সর্ট করুন
-              {
-                $sort: { createdAt: -1 },
+            // ৫. নতুন বিজ্ঞাপনের টিকিট আগে দেখানোর জন্য সর্ট করুন
+            {
+              $sort: { createdAt: -1 },
+            },
+
+            // ৬. মাত্র ৩টি বিজ্ঞাপনের টিকিট লিমিট করুন
+            {
+              $limit: 3,
+            },
+
+            // ৭. ফ্রন্টএন্ডে ক্লিন ডাটা পাঠানোর জন্য অতিরিক্ত 'vendorData' ফিল্ডটি বাদ দিন
+            {
+              $project: {
+                vendorData: 0,
               },
+            },
+          ])
+          .toArray();
 
-              // ৬. মাত্র ৩টি বিজ্ঞাপনের টিকিট লিমিট করুন
-              {
-                $limit: 3,
-              },
-
-              // ৭. ফ্রন্টএন্ডে ক্লিন ডাটা পাঠানোর জন্য অতিরিক্ত 'vendorData' ফিল্ডটি বাদ দিন
-              {
-                $project: {
-                  vendorData: 0,
-                },
-              },
-            ])
-            .toArray();
-
-          res.send(result);
-        } catch (error) {
-          console.error(
-            "Error fetching advertised tickets without fraud:",
-            error,
-          );
-          res.status(500).send({ message: "Internal Server Error" });
-        }
-      },
-    );
+        res.send(result);
+      } catch (error) {
+        console.error(
+          "Error fetching advertised tickets without fraud:",
+          error,
+        );
+        res.status(500).send({ message: "Internal Server Error" });
+      }
+    });
 
     app.get(
       "/api/bookingticket/vendor/:email",
